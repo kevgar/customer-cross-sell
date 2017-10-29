@@ -1,162 +1,212 @@
-rm(list=ls())
+# rm(list=ls())
 
-get_basetable <- function(start_ind, end_ind, start_dep, end_dep){
+create_basetable <- function(start_ind, end_ind, start_dep, end_dep){
+
+library(data.table)
+cat('Reading in the data..\n')
+
+routes <-  data.table(read.csv('http://kddata.co/data/chapter6/routes.csv',
+                   colClasses = c("RouteID" = "character",
+                                  "Region" = "factor",
+                                  "WeekOrder" = "factor",
+                                  "Day" = "factor")))
+
+products <-  data.table(read.csv('http://kddata.co/data/chapter6/products.csv',
+                     colClasses = c("ProductID" = "character",
+                                    "Category" = "factor",
+                                    "Family" = "factor",
+                                    "Price" = "numeric")))
+
+customers <-  data.table(read.csv('http://kddata.co/data/chapter6/customers.csv',
+                      colClasses = c("CustomerID" = "character",
+                                     "RouteID" = "factor",
+                                     "CustomerType" = "factor",
+                                     "ZIP" = "character",
+                                     "SeasonType" = "factor")))
+
+visitdetails <-  data.table(read.csv('http://kddata.co/data/chapter6/visitdetails.csv',
+                          colClasses = c("VisitDetailID" = "character",
+                                         "ProductID" = "character",
+                                         "Quantity" = "integer",
+                                         "VisitID" = "character")))
+
+visits <-  data.table(read.csv('http://kddata.co/data/chapter6/visits.csv',
+                   colClasses = c("VisitID" = "character",
+                                  "CustomerID" = "character",
+                                  "SalesRepresentativeID" = "character",
+                                  "VisitDate" = "character",
+                                  "Amount" = "numeric",
+                                  "PaymentTerm" = "factor",
+                                  "Outcome" = "factor")))
     
-    library(data.table)
-    cat('Reading in the data..\n')
-    routes <- data.table(read.csv('http://kddata.co/data/chapter6/routes.csv', colClasses = 'character'))
-    products <- data.table(read.csv('http://kddata.co/data/chapter6/products.csv', colClasses = 'character'))
-    customers <- data.table(read.csv('http://kddata.co/data/chapter6/customers.csv', colClasses = 'character'))
-    visitdetails <- data.table(read.csv('http://kddata.co/data/chapter6/visitdetails.csv', colClasses = 'character'))
-    visits <- data.table(read.csv('http://kddata.co/data/chapter6/visits.csv', colClasses = 'character'))
-    visits[,VisitDate:=as.Date(visits$VisitDate, format='%d-%b-%y')]
+    visits[,Hour:=substring(VisitDate,11,12)]
+    visits[,TimeIndicator:=substring(visits$VisitDate,30,31)]
+    visits[,VisitDate:=as.Date(VisitDate, format='%d-%b-%y')]
+    
     
     cat('Preparing the basetable..\n')
     ################################
     # For each customer compute:
+    # Recency of last purchase
     # Number of visits
     # Number of sales reps
-    # Recency of last purchase
-    # Mean amount spent (per visit)
+    # Mean amount (per visit)
     # Mean number of products (per visit)
-    # Mean dollar sales (per visit)
-    # Customer type
-    # Customer zipcode
-    # Units sold (per product)
+    # Mean price*quantity (per visit)
+    # CustomerType dummies
+    # SeasonType dummies
+    # WeekOrder dummies
+    # Weekday dummies
+    # Zipcode dummies
+    # RoutID dummies
+    # Region dummies
+    # Units sold (by product)
     ################################
     
-    # select the time window
+    ### merge customers and routes
+    customers_routes <- merge(customers, routes, by = "RouteID", all.x = TRUE)
+    
+    ### merge visits and visit details
+    visits_visitdetails <- merge(visitdetails, visits, by = "VisitID", all.x = TRUE)
+    
+    ### Only revenue generating products
+    revenue_products <- products[products$Price > 0,]
+ 
+    ### time window
     t1 <- as.Date(start_ind)
     t2 <- as.Date(end_ind)
     t3 <- as.Date(start_dep)
     t4 <- as.Date(end_dep)
     
-    # First select visits that occured in the independent period
-    visitsIND <- visits[(VisitDate >= t1) & (VisitDate <= t2),]
-    # We also want to exclude visits where the customer was not home
-    visitsIND <- visitsIND[Outcome!='NOT HOME',]
+    ### Select customers with purchases in DEP
+    customers_purchased <- unique(visits_visitdetails[VisitDate >= t3 & VisitDate <= t4, "CustomerID"])
     
-    # Compute number of visits for each customer
-    NumberVisits <- visitsIND[,list(NumberVisits=.N),by='CustomerID']
+    ### Select data for customers with purchase
+    visits_visitdetails <- visits_visitdetails[
+        CustomerID %in% customers_purchased$CustomerID &
+            ProductID %in% revenue_products$ProductID,]
     
-    # Compute average visit amount for each customer
-    visitsIND[,Amount:=as.numeric(Amount)]
-    AvgVisitAmount <- visitsIND[,list(AvgVisitAmount=mean(Amount)),by='CustomerID']
+    ### DEP period
+    visits_visitdetails_DEP <- visits_visitdetails[VisitDate >= t3 & VisitDate <= t4,]
     
-    # Number of Sales Reps
-    NumberSalesReps <- visitsIND[,list(NumberSalesReps=length(unique(SalesRepresentativeID))),by='CustomerID']
+    ### IND period 
+    visits_visitdetails_IND <- visits_visitdetails[VisitDate >= t1 & VisitDate <= t2,]
     
-    # Mean number of ProductID per visit
-    # First we need the relevant 'CustomerID' for each visit so we join visitdetails to visits. 
-    # We do an innner join because we want a CustomerID for every VisitID and vise versa
-    visitdetails_visits <- merge(x=visitdetails,
-                                 y=visitsIND[,list(VisitID, CustomerID)],
-                                 by='VisitID')
+    ### num customers in DEP period
+    length(unique(visits_visitdetails_DEP$CustomerID)) # [1] 4655
     
-    # Count distinct products by visit
-    NumberProducts <- visitdetails_visits[,list(NumberProducts=length(unique(ProductID))),
-                                          by=c('VisitID', 'CustomerID')]
-    # Compute mean NumberProducts by cutomer
-    AvgNumberProducts <- NumberProducts[,list(AvgNumberProducts = mean(NumberProducts)), 
-                                        by='CustomerID']
+    # ### DEP variable
+    visits_visitdetails_DEP[,Response:=0]
+    for(i in 1:length(unique(visits_visitdetails$ProductID))){
+        visits_visitdetails_DEP$Response <- 
+            ifelse(visits_visitdetails_DEP$ProductID == 
+                       unique(visits_visitdetails$ProductID)[i],
+                   i,visits_visitdetails_DEP$Response)
+        }
+
+    ### Find most recent purchase date by customer in DEP period
+    recent_purchase_date <- aggregate(visits_visitdetails_DEP$VisitDate,
+                                      by = list("CustomerID" = visits_visitdetails_DEP$CustomerID),
+                                      min)
+    colnames(recent_purchase_date)[2] <- "Date"
+    ## or
+    # recent_purchase_date <-
+    #     visits_visitdetails_DEP[,list(Date=min(VisitDate)),by="CustomerID"]
     
-    # Mean dollar sales per visit
-    # First we need 'Price' from the products table. We do an inner join
-    # but could also have used a left join and gotten the same result
-    visitdetails_visits_products <- merge(x=visitdetails_visits,
-                                          y=products[,list(ProductID, Price)],
-                                          by='ProductID')
     
-    # Convert Price and quantity to numeric
-    visitdetails_visits_products[, Price:=as.numeric(Price)]
-    visitdetails_visits_products[, Quantity:=as.numeric(Quantity)]
     
-    # Apparently there were 1307 instances where a product 
-    # did not have a price. Let's see what these are..
-    zeroPrice <- unique(visitdetails_visits_products[is.na(Price) | Price==0,ProductID])
+    # ### Merge in product most recently purchased
+    recent_response <- merge(recent_purchase_date,
+                             visits_visitdetails_DEP[,c("CustomerID","VisitDate","Response","Amount")],
+                             all.x = TRUE)
     
-    # So the free stuff includes of coffee, scoops of ice 
-    # cream, assortmants, garnitures and coupons.
-    zeroPriceCoupon <- products[ProductID %in% zeroPrice & Category=='Coupon',ProductID]
-    zeroPriceProduct <- products[ProductID %in% zeroPrice & Category=='Product',ProductID]
+    ### take top selling item for each customer
+    recent_response <- recent_response[order(recent_response$Amount, decreasing = TRUE),]
+    recent_response <- aggregate(recent_response$Response,
+                                 by = list("CustomerID" = recent_response$CustomerID),
+                                 head, n = 1)
+    colnames(recent_response)[2] <- "Response"
     
-    # From the summary we see the price can also be negative.
-    # Let's see what those products are..
-    negPrice <- unique(visitdetails_visits_products[Price<0,]$ProductID)
+    ### make variables for predictors
     
-    # These are all coupons. We don't know why price is negative 
-    # for some coupons and 0 or missing for others. We can rename 
-    # in order to keep track of these
-    negPriceCoupon <- negPrice
+    ### recency
+    recency <- aggregate(visits_visitdetails_IND$VisitDate, 
+                         by = list("CustomerID" = visits_visitdetails_IND$CustomerID),
+                         max)
+    recency$Recency <- as.numeric(t2 - recency$x)
+    recency$x <- NULL
     
-    # Before proceeding we need to replace missing prices with 0
-    visitdetails_visits_products[, Price:=ifelse(is.na(Price), 0, Price)]
+    ### number of products
+    num_products <- aggregate(visits_visitdetails_IND$Quantity, 
+                              by = list("CustomerID" = visits_visitdetails_IND$CustomerID),
+                              sum)
+    colnames(num_products)[2] <- "Num_products"
     
-    # Compute total dollar sales for each visit
-    DollarSales <- visitdetails_visits_products[,list(TotalDollarSales=sum(Price*Quantity)),
-                                                by=c('VisitID', 'CustomerID')]
-    # Compute average dollar sales by customer
-    AvgDollarSales <- DollarSales[,list(AvgDollarSales=round(mean(TotalDollarSales),2)),
-                                  by='CustomerID']
+    ### number of visits
+    num_visits <- aggregate(visits_visitdetails_IND$VisitID, 
+                            by = list("CustomerID" = visits_visitdetails_IND$CustomerID),
+                            length)
+    colnames(num_visits)[2] <- "Num_visits"
     
-    # Find quanitites of each product purchased by each custumer
-    library(tidyr) # need tidyr::spread
-    UnitSales <- visitdetails_visits_products[,list(UnitSales=sum(Quantity)), by=c('CustomerID', 'ProductID')]
-    UnitSales <- spread(UnitSales, key=ProductID, value=UnitSales)
-    UnitSales[is.na(UnitSales)] <- 0
+    ### average amount per visit
+    avg_amount <- aggregate(visits_visitdetails_IND$Amount, 
+                            by = list("CustomerID" = visits_visitdetails_IND$CustomerID),
+                            mean)
+    colnames(avg_amount)[2] <- "Avg_amount"
+    avg_amount$Avg_amount <- round(avg_amount$Avg_amount, 2)
     
-    # Rename the columns to indicate coupons and givaway items
-    names(UnitSales) <- ifelse(names(UnitSales) %in% zeroPriceCoupon, 
-                               paste0('zeroPriceCoupon_', names(UnitSales)), 
-                               names(UnitSales))
+    ### make list and reduce
+    data <- list(recency,
+                 num_products,
+                 num_visits,
+                 avg_amount)
     
-    names(UnitSales) <- ifelse(names(UnitSales) %in% zeroPriceProduct, 
-                               paste0('zeroPriceProduct_', names(UnitSales)), 
-                               names(UnitSales))
+    basetable <- Reduce(function(x,y) merge(x,y,by="CustomerID"), data)
     
-    names(UnitSales) <- ifelse(names(UnitSales) %in% negPriceCoupon, 
-                               paste0('negPriceCoupon_', names(UnitSales)), 
-                               names(UnitSales))
+    ### merge in customer and route info
+    basetable <- merge(basetable, customers_routes, by = "CustomerID", all.x = TRUE)
+    basetable$ZIP <- factor(basetable$ZIP)
     
-    # Reorder columns so the coupons are first
-    ordering <- c(1, order(names(UnitSales[,-1]), decreasing = TRUE)+1)
-    UnitSales <- UnitSales[,ordering, with=FALSE]
-    
-    # variables that came from visitsIND have 5200 rows, but variables from
-    # the visitsdetails table only have 5005. Let's see why that is..
-    
-    # Apparently these were visits with Outcome='NOTHING NEEDED'
-    # These 195 customers were visited 2339 times..
-    
-    # Compute recency as t2 - most recent visit where Outcome!='NOTHING NEEDED'
-    RecencySales <- visitsIND[Outcome=='SALES',list(RecencySales=mean(as.integer(t2-max(VisitDate)))),
-                              by='CustomerID']
-    
-    # Get the customer table information
-    CustomerTypeZip <- customers[, c('CustomerID', 'CustomerType', 'ZIP')]
-    # Note this table has customers that are not in the independent period data. 
-    # These will be eliminated whenenever we do the inner join
-    
-    # Unstack the customer type and zipcode columns to create dummy variables
+    ### make dummies
     library(dummies)
-    CustomerTypeZip <- dummy.data.frame(CustomerTypeZip,names=c('CustomerType','ZIP'))
+    basetable_dummy <- dummy.data.frame(basetable[,-1])
+    basetable <- cbind(basetable,basetable_dummy)
+    basetable$RouteID <- basetable$CustomerType <- basetable$ZIP <- basetable$SeasonType <- 
+        basetable$Region <- basetable$WeekOrder <- basetable$Day <- NULL
     
-    # Merge dependent and independent to create the basetable
-    # Notice the innter join. This gets rid of the 195 customers mentioned above
-    data <- list(NumberVisits, NumberSalesReps, RecencySales, AvgNumberProducts, AvgVisitAmount, AvgDollarSales, CustomerTypeZip, UnitSales)
-    basetable <- data.table(Reduce(function(x,y) merge(x, y, by='CustomerID'), data))
+    ######### make product dummies
+    library(reshape2)
+    test <- visits_visitdetails_IND[,c("CustomerID","ProductID","Quantity")]
+    test_melt <- melt(test, id.vars = c("CustomerID","ProductID"))
+    test_cast <- acast(test_melt, CustomerID ~ ProductID, sum)
+    test_cast <- as.data.frame(test_cast)
+    test_cast$CustomerID <- rownames(test_cast)
+    
+    basetable <- suppressMessages(merge(basetable, test_cast, by = "CustomerID", 
+                       all.x = TRUE, suffixes = '')[,!duplicated(names(basetable))])
+    #########
+    
+    ### bring in response
+    basetable <- merge(recent_response,basetable, by = "CustomerID", all.y = TRUE)
+    basetable <- basetable[!is.na(basetable$Response),]
+    ### get total number purchased for each product
+    num_responses <- aggregate(basetable$Response, by = list("Response" = basetable$Response), length)
+    ### get products that sold at least 5 products
+    products <- head(num_responses$Response[order(num_responses$x,decreasing = TRUE)],40)
+    basetable <- basetable[basetable$Response %in% products,]
+    basetable$Response <- factor(basetable$Response)
     
     # clean up the environment
-    # rm(list=ls()[!ls() %in% c('basetable', 'data')])
+    # rm(list=ls()[!ls() %in% c('basetable','visits_visitdetails')])
     
     return(basetable)
     
     }
 
-system.time(
-    get_basetable(
-        start_ind="2007-01-08",
-        end_ind="2008-07-03",
-        start_dep="2008-07-04",
-        end_dep="2008-12-31")
-    )
+# system.time(
+# basetable <- create_basetable(
+#     start_ind="2007-01-08",
+#     end_ind="2008-07-03",
+#     start_dep="2008-07-04",
+#     end_dep="2008-12-31"))
+
