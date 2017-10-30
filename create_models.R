@@ -1,5 +1,4 @@
-create_model <- function(start_ind,end_ind,start_dep,end_dep){
-    
+create_models <- function(start_ind,end_ind,start_dep,end_dep){
     
     # Code to create the basetable
     source('create_basetable.R')
@@ -77,44 +76,48 @@ create_model <- function(start_ind,end_ind,start_dep,end_dep){
     #retrieve the actual y from the training set
     cat('Tuning second model on 33% validation subset..\n')
     predKNN <- as.integer(as.character(y[indTrain][indicatorsKNN])) 
-    predKNN <- data.frame(matrix(data=predKNN,
-                                 ncol=k, 
-                                 nrow=nrow(basetable_KNN[indVal,])))
+    predKNN <- data.frame(matrix(data=predKNN,ncol=k,
+                        nrow=nrow(basetable_KNN[indVal,])))
     
     predictions <- sapply(1:nrow(predKNN), function(x)
-        as.numeric(names(sort(table(as.numeric(predKNN[x,])),decreasing = TRUE)[1])))
-    proportion <- sapply(1:nrow(predKNN), function(x)
-        as.numeric(sort(table(as.numeric(predKNN[x,])),decreasing = TRUE)[1])) / k
-    # AUC::auc(roc(predictions,ytest))
-    table_pred <-table(predictions,y[indVal])                                      
-    accuracy_test <- sum(diag(table_pred))/length(predictions)
-    customer_item_purch <- data.frame("CustomerID" = customer_ids[indVal],
-                                      "NextPurch" = predictions,
-                                      "Probability" = proportion)
-    customer_item_purch <- customer_item_purch[order(proportion, decreasing = TRUE),]
-    # customer_item_purch$NextPurch <- unique(visits_visitdetails$ProductID)[customer_item_purch$NextPurch]
+        as.numeric(names(sort(table(as.numeric(predKNN[x,])),
+                              decreasing = TRUE)[1])))
     
+    proportion <- sapply(1:nrow(predKNN), function(x)
+        as.numeric(sort(table(as.numeric(predKNN[x,])),
+                        decreasing = TRUE)[1])) / k
+    
+    # AUC::auc(roc(predictions,ytest))
+    table_pred <-table(predictions,y[indVal])        
+    accuracy_test <- sum(diag(table_pred))/length(predictions)
+    customer_item_purch <- data.frame(
+        "CustomerID" = customer_ids[indVal],
+        "NextPurch" = predictions, 
+        "Probability" = proportion)
+    
+    customer_item_purch <- customer_item_purch[
+        order(proportion, decreasing = TRUE),]
+    # customer_item_purch$NextPurch <- unique(visits_visitdetails$ProductID)[
+    #     customer_item_purch$NextPurch]
     
     ### TO DO:
     cat('Evaluating second model on 33% test subset..\n')
     
-    
     # Return all the stuff in a list
-    return(list(m1=rf_model, 
-            p1=rf_pred,
-            a1=accuracy,
-            data1=basetable,
-            m2=indicatorsKNN , 
-            p2=customer_item_purch,
-            a2=accuracy_test,
-            data2=basetable_KNN))
-}
+    return(list(
+        m1=rf_model,
+        p1=rf_pred,
+        a1=accuracy,
+        m2=indicatorsKNN,
+        p2=customer_item_purch,
+        a2=accuracy_test))
+    
+    }
 
-
-system.time(
-    result <- create_model(
-    start_ind="2007-01-08",
-    end_ind="2008-07-03",
-    start_dep="2008-07-04",
-    end_dep="2008-12-31"))
+# system.time(
+#     result <- create_models(
+#     start_ind="2007-01-08",
+#     end_ind="2008-07-03",
+#     start_dep="2008-07-04",
+#     end_dep="2008-12-31"))
 

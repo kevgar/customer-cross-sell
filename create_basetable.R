@@ -1,48 +1,50 @@
 # rm(list=ls())
 
-create_basetable <- function(start_ind, end_ind, start_dep, end_dep){
-
-library(data.table)
-cat('Reading in the data..\n')
-
-routes <-  data.table(read.csv('http://kddata.co/data/chapter6/routes.csv',
-                   colClasses = c("RouteID" = "character",
-                                  "Region" = "factor",
-                                  "WeekOrder" = "factor",
-                                  "Day" = "factor")))
-
-products <-  data.table(read.csv('http://kddata.co/data/chapter6/products.csv',
-                     colClasses = c("ProductID" = "character",
-                                    "Category" = "factor",
-                                    "Family" = "factor",
-                                    "Price" = "numeric")))
-
-customers <-  data.table(read.csv('http://kddata.co/data/chapter6/customers.csv',
-                      colClasses = c("CustomerID" = "character",
-                                     "RouteID" = "factor",
-                                     "CustomerType" = "factor",
-                                     "ZIP" = "character",
-                                     "SeasonType" = "factor")))
-
-visitdetails <-  data.table(read.csv('http://kddata.co/data/chapter6/visitdetails.csv',
-                          colClasses = c("VisitDetailID" = "character",
-                                         "ProductID" = "character",
-                                         "Quantity" = "integer",
-                                         "VisitID" = "character")))
-
-visits <-  data.table(read.csv('http://kddata.co/data/chapter6/visits.csv',
-                   colClasses = c("VisitID" = "character",
-                                  "CustomerID" = "character",
-                                  "SalesRepresentativeID" = "character",
-                                  "VisitDate" = "character",
-                                  "Amount" = "numeric",
-                                  "PaymentTerm" = "factor",
-                                  "Outcome" = "factor")))
+create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE){
     
-    visits[,Hour:=substring(VisitDate,11,12)]
-    visits[,TimeIndicator:=substring(visits$VisitDate,30,31)]
-    visits[,VisitDate:=as.Date(VisitDate, format='%d-%b-%y')]
     
+    
+    if(train){
+        
+        library(data.table)
+        cat('Reading in the data..\n')
+        
+        l <<- list(
+            routes = data.table(read.csv('http://kddata.co/data/chapter6/routes.csv',
+                                         colClasses = c("RouteID" = "character",
+                                                        "Region" = "factor",
+                                                        "WeekOrder" = "factor",
+                                                        "Day" = "factor"))),
+            products = data.table(read.csv('http://kddata.co/data/chapter6/products.csv',
+                                           colClasses = c("ProductID" = "character",
+                                                          "Category" = "factor",
+                                                          "Family" = "factor",
+                                                          "Price" = "numeric"))),
+            customers = data.table(read.csv('http://kddata.co/data/chapter6/customers.csv',
+                                            colClasses = c("CustomerID" = "character",
+                                                           "RouteID" = "factor",
+                                                           "CustomerType" = "factor",
+                                                           "ZIP" = "character",
+                                                           "SeasonType" = "factor"))),
+            visitdetails = data.table(read.csv('http://kddata.co/data/chapter6/visitdetails.csv',
+                                               colClasses = c("VisitDetailID" = "character",
+                                                              "ProductID" = "character",
+                                                              "Quantity" = "integer",
+                                                              "VisitID" = "character"))),
+            visits = data.table(read.csv('http://kddata.co/data/chapter6/visits.csv',
+                                         colClasses = c("VisitID" = "character",
+                                                        "CustomerID" = "character",
+                                                        "SalesRepresentativeID" = "character",
+                                                        "VisitDate" = "character",
+                                                        "Amount" = "numeric",
+                                                        "PaymentTerm" = "factor",
+                                                        "Outcome" = "factor"))
+            )[,Hour:=substring(VisitDate,11,12)
+              ][,TimeIndicator:=substring(VisitDate,30,31)
+                ][,VisitDate:=as.Date(VisitDate, format='%d-%b-%y')])
+    }
+    
+    try( if( is.null(l) ) stop("call create_models function then try again..\n") )
     
     cat('Preparing the basetable..\n')
     ################################
@@ -64,13 +66,13 @@ visits <-  data.table(read.csv('http://kddata.co/data/chapter6/visits.csv',
     ################################
     
     ### merge customers and routes
-    customers_routes <- merge(customers, routes, by = "RouteID", all.x = TRUE)
+    customers_routes <- merge(l$customers, l$routes, by = "RouteID", all.x = TRUE)
     
     ### merge visits and visit details
-    visits_visitdetails <- merge(visitdetails, visits, by = "VisitID", all.x = TRUE)
+    visits_visitdetails <- merge(l$visitdetails, l$visits, by = "VisitID", all.x = TRUE)
     
     ### Only revenue generating products
-    revenue_products <- products[products$Price > 0,]
+    revenue_products <- l$products[Price > 0,]
  
     ### time window
     t1 <- as.Date(start_ind)
@@ -86,52 +88,57 @@ visits <-  data.table(read.csv('http://kddata.co/data/chapter6/visits.csv',
         CustomerID %in% customers_purchased$CustomerID &
             ProductID %in% revenue_products$ProductID,]
     
-    ### DEP period
-    visits_visitdetails_DEP <- visits_visitdetails[VisitDate >= t3 & VisitDate <= t4,]
+    # ### DEP period
+    # visits_visitdetails_DEP <- visits_visitdetails[VisitDate >= t3 & VisitDate <= t4,]
+    
+    if(train){
+        ### DEP period
+        visits_visitdetails_DEP <- visits_visitdetails[
+            VisitDate >= t3 & VisitDate <= t4,]
+        }
+    
     
     ### IND period 
     visits_visitdetails_IND <- visits_visitdetails[VisitDate >= t1 & VisitDate <= t2,]
     
-    ### num customers in DEP period
-    length(unique(visits_visitdetails_DEP$CustomerID)) # [1] 4655
-    
-    # ### DEP variable
-    visits_visitdetails_DEP[,Response:=0]
-    for(i in 1:length(unique(visits_visitdetails$ProductID))){
-        visits_visitdetails_DEP$Response <- 
-            ifelse(visits_visitdetails_DEP$ProductID == 
-                       unique(visits_visitdetails$ProductID)[i],
-                   i,visits_visitdetails_DEP$Response)
+    if(train){
+        
+        ### num customers in DEP period
+        length(unique(visits_visitdetails_DEP$CustomerID)) # [1] 4655
+        
+        ### DEP variable
+        visits_visitdetails_DEP[,Response:=0]
+        for(i in 1:length(unique(visits_visitdetails$ProductID))){
+            visits_visitdetails_DEP$Response <-
+                ifelse(visits_visitdetails_DEP$ProductID ==
+                           unique(visits_visitdetails$ProductID)[i],
+                       i,visits_visitdetails_DEP$Response)
         }
-
-    ### Find most recent purchase date by customer in DEP period
-    recent_purchase_date <- aggregate(visits_visitdetails_DEP$VisitDate,
-                                      by = list("CustomerID" = visits_visitdetails_DEP$CustomerID),
-                                      min)
-    colnames(recent_purchase_date)[2] <- "Date"
-    ## or
-    # recent_purchase_date <-
-    #     visits_visitdetails_DEP[,list(Date=min(VisitDate)),by="CustomerID"]
-    
-    
-    
-    # ### Merge in product most recently purchased
-    recent_response <- merge(recent_purchase_date,
-                             visits_visitdetails_DEP[,c("CustomerID","VisitDate","Response","Amount")],
-                             all.x = TRUE)
-    
-    ### take top selling item for each customer
-    recent_response <- recent_response[order(recent_response$Amount, decreasing = TRUE),]
-    recent_response <- aggregate(recent_response$Response,
-                                 by = list("CustomerID" = recent_response$CustomerID),
-                                 head, n = 1)
-    colnames(recent_response)[2] <- "Response"
+        
+        ### Find most recent purchase date by customer in DEP period
+        recent_purchase_date <- aggregate(
+            visits_visitdetails_DEP$VisitDate,
+            by = list("CustomerID"=visits_visitdetails_DEP$CustomerID), min)
+        colnames(recent_purchase_date)[2] <- "Date"
+        
+        ### Merge in product most recently purchased
+        recent_response <- merge(recent_purchase_date,visits_visitdetails_DEP[
+            ,c("CustomerID","VisitDate","Response","Amount")
+            ], all.x = TRUE)
+        
+        ### take top selling item for each customer
+        recent_response <- recent_response[order(recent_response$Amount,decreasing=TRUE),]
+        recent_response <- aggregate(recent_response$Response,
+                                     by=list("CustomerID"=recent_response$CustomerID),
+                                     head,n=1)
+        colnames(recent_response)[2] <- "Response"
+    }
     
     ### make variables for predictors
     
     ### recency
     recency <- aggregate(visits_visitdetails_IND$VisitDate, 
-                         by = list("CustomerID" = visits_visitdetails_IND$CustomerID),
+                         by = list("CustomerID"=visits_visitdetails_IND$CustomerID),
                          max)
     recency$Recency <- as.numeric(t2 - recency$x)
     recency$x <- NULL
@@ -182,19 +189,24 @@ visits <-  data.table(read.csv('http://kddata.co/data/chapter6/visits.csv',
     test_cast <- as.data.frame(test_cast)
     test_cast$CustomerID <- rownames(test_cast)
     
-    basetable <- suppressMessages(merge(basetable, test_cast, by = "CustomerID", 
-                       all.x = TRUE, suffixes = '')[,!duplicated(names(basetable))])
+    basetable <- merge(x=basetable, y=test_cast,
+                       by = "CustomerID", 
+                       all.x = TRUE, suffixes = ''
+                       )[,!duplicated(names(basetable))]
+    
     #########
     
-    ### bring in response
-    basetable <- merge(recent_response,basetable, by = "CustomerID", all.y = TRUE)
-    basetable <- basetable[!is.na(basetable$Response),]
-    ### get total number purchased for each product
-    num_responses <- aggregate(basetable$Response, by = list("Response" = basetable$Response), length)
-    ### get products that sold at least 5 products
-    products <- head(num_responses$Response[order(num_responses$x,decreasing = TRUE)],40)
-    basetable <- basetable[basetable$Response %in% products,]
-    basetable$Response <- factor(basetable$Response)
+    if(train){
+        ### bring in response
+        basetable <- merge(recent_response,basetable, by = "CustomerID", all.y = TRUE)
+        basetable <- basetable[!is.na(basetable$Response),]
+        ### get total number purchased for each product
+        num_responses <- aggregate(basetable$Response, by = list("Response" = basetable$Response), length)
+        ### get products that sold at least 5 products
+        l$products <- head(num_responses$Response[order(num_responses$x,decreasing = TRUE)],40)
+        basetable <- basetable[basetable$Response %in% l$products,]
+        basetable$Response <- factor(basetable$Response)
+    }
     
     # clean up the environment
     # rm(list=ls()[!ls() %in% c('basetable','visits_visitdetails')])
@@ -205,8 +217,7 @@ visits <-  data.table(read.csv('http://kddata.co/data/chapter6/visits.csv',
 
 # system.time(
 # basetable <- create_basetable(
-#     start_ind="2007-01-08",
-#     end_ind="2008-07-03",
-#     start_dep="2008-07-04",
-#     end_dep="2008-12-31"))
-
+    # start_ind="2007-01-08",
+    # end_ind="2008-07-03",
+    # start_dep="2008-07-04",
+    # end_dep="2008-12-31"))
