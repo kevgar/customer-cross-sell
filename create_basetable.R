@@ -2,8 +2,6 @@
 
 create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE){
     
-    
-    
     if(train){
         
         library(data.table)
@@ -54,7 +52,6 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
     # Number of sales reps
     # Mean amount (per visit)
     # Mean number of products (per visit)
-    # Mean price*quantity (per visit)
     # CustomerType dummies
     # SeasonType dummies
     # WeekOrder dummies
@@ -77,26 +74,25 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
     ### time window
     t1 <- as.Date(start_ind)
     t2 <- as.Date(end_ind)
-    t3 <- as.Date(start_dep)
-    t4 <- as.Date(end_dep)
+    if(train){ 
+        t3 <- as.Date(start_dep)
+        t4 <- as.Date(end_dep) 
+        } # dump date
     
-    ### Select customers with purchases in DEP
-    customers_purchased <- unique(visits_visitdetails[VisitDate >= t3 & VisitDate <= t4, "CustomerID"])
-    
-    ### Select data for customers with purchase
-    visits_visitdetails <- visits_visitdetails[
-        CustomerID %in% customers_purchased$CustomerID &
-            ProductID %in% revenue_products$ProductID,]
-    
-    # ### DEP period
-    # visits_visitdetails_DEP <- visits_visitdetails[VisitDate >= t3 & VisitDate <= t4,]
+    if(train){
+        ### Select customers with purchases in DEP
+        customers_purchased <- unique(visits_visitdetails[VisitDate >= t3 & VisitDate <= t4, "CustomerID"])
+        ### Select data for customers with purchase
+        visits_visitdetails <- visits_visitdetails[
+            CustomerID %in% customers_purchased$CustomerID &
+                ProductID %in% revenue_products$ProductID,]
+        }
     
     if(train){
         ### DEP period
         visits_visitdetails_DEP <- visits_visitdetails[
             VisitDate >= t3 & VisitDate <= t4,]
         }
-    
     
     ### IND period 
     visits_visitdetails_IND <- visits_visitdetails[VisitDate >= t1 & VisitDate <= t2,]
@@ -205,6 +201,7 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
         ### get products that sold at least 5 products
         l$products <- head(num_responses$Response[order(num_responses$x,decreasing = TRUE)],40)
         basetable <- basetable[basetable$Response %in% l$products,]
+        # basetable$Response <- factor(as.character(basetable$Response))
         basetable$Response <- factor(basetable$Response)
     }
     

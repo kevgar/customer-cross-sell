@@ -1,5 +1,5 @@
 create_models <- function(start_ind,end_ind,start_dep,end_dep){
-    
+
     # Code to create the basetable
     source('create_basetable.R')
     basetable <- create_basetable(
@@ -105,6 +105,7 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     
     # Return all the stuff in a list
     return(list(
+        length_ind=as.integer(as.Date(end_ind)-as.Date(start_ind)),
         m1=rf_model,
         p1=rf_pred,
         a1=accuracy,

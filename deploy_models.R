@@ -1,23 +1,12 @@
-rm(list=ls())
+# rm(list=ls())
 
-source('create_models.R')
-
-system.time(
-    result <- create_models(
-    start_ind="2007-01-08",
-    end_ind="2008-07-03",
-    start_dep="2008-07-04",
-    end_dep="2008-12-31"))
-
-deploy_models <- function(start_ind,end_ind,start_dep,end_dep){
+deploy_models <- function(object,dumpdate){
     
     # Code to create the basetable
     source('create_basetable.R')
     basetable <- create_basetable(
-        start_ind=start_ind,
-        end_ind=end_ind,
-        start_dep=start_dep,
-        end_dep=end_dep, 
+        start_ind=dumpdate,
+        end_ind=as.Date(dumpdate)+object$length_ind,
         train=FALSE)
     
     # clean up the environment
@@ -47,7 +36,6 @@ deploy_models <- function(start_ind,end_ind,start_dep,end_dep){
     # indVal <- sample(ind[-indTrain], ceiling(length(ind)/3))
     # indTest <- ind[-c(indTrain, indVal)]
     basetable_KNN <- data.frame(sapply(basetable, function(x) as.numeric(as.character(x))))
-    
     
     ############# kNN Model #############
     # Generate 33/33/33 train,test and validation indicies
@@ -87,17 +75,23 @@ deploy_models <- function(start_ind,end_ind,start_dep,end_dep){
     #             p2=customer_item_purch,
     #             data2=basetable_KNN))
     
-    
     # Verify basetables are generated
     return(list(data1=basetable,
                 data2=basetable_KNN))
     
 }
 
+# Run first
+source('create_models.R')
 system.time(
-    result2 <- deploy_models(
+    result <- create_models(
         start_ind="2007-01-08",
         end_ind="2008-07-03",
         start_dep="2008-07-04",
         end_dep="2008-12-31"))
+
+system.time(
+    result2 <- deploy_models(
+        object=result,
+        dumpdate="2007-01-08"))
 
