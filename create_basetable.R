@@ -231,4 +231,3 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
 # end_ind="2008-01-03",
 # start_dep="2008-01-04",
 # end_dep="2008-12-29"))
-

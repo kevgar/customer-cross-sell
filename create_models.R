@@ -23,6 +23,7 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     response_cast <- as.data.frame(test_cast)
     response_cast <- as.data.frame(sapply(response_cast, function(x){replace(x, x > 0,1)}))
     response_cast$CustomerID <- rownames(test_cast)
+    Y <- response_cast[,-41]
     
     
     # Remove unnecesary columns
@@ -73,7 +74,7 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     #####################################
     
     
-    # Generate 33/33/33 train, val and test indicies
+    # Generate 33/33/33 train and val and test indicies
     set.seed(7)
     indTrain <- sample(ind, ceiling(length(ind)/3))
     indVal <- sample(ind[-indTrain], ceiling(length(ind)/3))
@@ -167,8 +168,6 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     (avg_rec <- num_rec/nrow(Y[indTest,])) # [1] 0.6502058
     (perc_correct_rec <- correct_rec / num_rec) # [1] 0.1724684
     
-    ### TO DO:
-  
     # Return results in a list
     return(list(
         length_ind=as.integer(as.Date(end_ind)-as.Date(start_ind)),
@@ -176,28 +175,30 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
         p1=output,
         a1=accuracy,
         m2=indicatorsKNN,
+        k=k, 
+        cutoff=cutoffs[j],
         p2=predictions_logical,
         a2=perc_correct_rec))
     
     }
 
-system.time(
-    result <- create_models(
-        start_ind="2007-01-08",
-        end_ind="2008-01-03",
-        start_dep="2008-01-04",
-        end_dep="2008-12-29"))
+# system.time(
+#     result <- create_models(
+#         start_ind="2007-01-08",
+#         end_ind="2008-01-03",
+#         start_dep="2008-01-04",
+#         end_dep="2008-12-29"))
 
 
 # as.Date("2007-01-08")+360
 # as.Date("2007-01-08")+360+1
 # as.Date("2007-01-08")+360+1+360
-result$m1
-result$m2
-result$a1
-result$a2
-head(result$p1,10)
-head(result$p2,10)
+# result$m1
+# result$m2
+# result$a1
+# result$a2
+# head(result$p1,10)
+# head(result$p2,10)
 
 
 
