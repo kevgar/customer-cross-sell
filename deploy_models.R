@@ -86,9 +86,10 @@ source('create_models.R')
 system.time(
     result <- create_models(
         start_ind="2007-01-08",
-        end_ind="2008-07-03",
-        start_dep="2008-07-04",
+        end_ind="2008-01-08",
+        start_dep="2008-01-09",
         end_dep="2008-12-31"))
+
 
 system.time(
     result2 <- deploy_models(

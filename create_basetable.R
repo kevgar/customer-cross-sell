@@ -50,7 +50,7 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
     # Recency of last purchase
     # Number of visits
     # Number of sales reps
-    # Mean amount (per visit)
+    # Mean item price
     # Mean number of products (per visit)
     # CustomerType dummies
     # SeasonType dummies
@@ -93,6 +93,9 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
         visits_visitdetails_DEP <- visits_visitdetails[
             VisitDate >= t3 & VisitDate <= t4,]
         }
+    
+    ### IND period 
+    visits_IND <- l$visits[VisitDate >= t1 & VisitDate <= t2,]
     
     ### IND period 
     visits_visitdetails_IND <- visits_visitdetails[VisitDate >= t1 & VisitDate <= t2,]
@@ -151,18 +154,29 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
                             length)
     colnames(num_visits)[2] <- "Num_visits"
     
-    ### average amount per visit
-    avg_amount <- aggregate(visits_visitdetails_IND$Amount, 
-                            by = list("CustomerID" = visits_visitdetails_IND$CustomerID),
-                            mean)
-    colnames(avg_amount)[2] <- "Avg_amount"
-    avg_amount$Avg_amount <- round(avg_amount$Avg_amount, 2)
+    ### total dollar sales per customer
+    total_amount <- aggregate(visits_IND$Amount, 
+                              by = list("CustomerID" = visits_IND$CustomerID),
+                              sum)
+    colnames(total_amount)[2] <- "Total_amount"
+    total_amount$Total_amount <- round(total_amount$Total_amount, 2)
+    
+    ### total quantity sales of each customer
+    total_quantity <- aggregate(visits_visitdetails_IND$Quantity, 
+                                by = list("CustomerID" = visits_visitdetails_IND$CustomerID),
+                                sum)
+    colnames(total_quantity)[2] <- "Total_quantity"
+    
+    ### merge total amount with total quantity
+    amount_per_item <- merge(total_amount, total_quantity, by = "CustomerID", all.x = TRUE)
+    amount_per_item$Amount_per_Item <- amount_per_item$Total_amount/amount_per_item$Total_quantity
+    amount_per_item$Total_amount <- amount_per_item$Total_quantity <- NULL
     
     ### make list and reduce
     data <- list(recency,
                  num_products,
                  num_visits,
-                 avg_amount)
+                 amount_per_item)
     
     basetable <- Reduce(function(x,y) merge(x,y,by="CustomerID"), data)
     
@@ -189,7 +203,6 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
                        by = "CustomerID", 
                        all.x = TRUE, suffixes = ''
                        )[,!duplicated(names(basetable))]
-    
     #########
     
     if(train){
@@ -198,11 +211,11 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
         basetable <- basetable[!is.na(basetable$Response),]
         ### get total number purchased for each product
         num_responses <- aggregate(basetable$Response, by = list("Response" = basetable$Response), length)
-        ### get products that sold at least 5 products
+        ### get the top 40 products
         l$products <- head(num_responses$Response[order(num_responses$x,decreasing = TRUE)],40)
         basetable <- basetable[basetable$Response %in% l$products,]
-        # basetable$Response <- factor(as.character(basetable$Response))
-        basetable$Response <- factor(basetable$Response)
+        basetable$Response <- factor(as.character(basetable$Response))
+        # basetable$Response <- factor(basetable$Response)
     }
     
     # clean up the environment
@@ -214,7 +227,7 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
 
 # system.time(
 # basetable <- create_basetable(
-    # start_ind="2007-01-08",
-    # end_ind="2008-07-03",
-    # start_dep="2008-07-04",
-    # end_dep="2008-12-31"))
+# start_ind="2007-01-08",
+# end_ind="2008-07-03",
+# start_dep="2008-07-04",
+# end_dep="2008-12-31"))
