@@ -11,12 +11,11 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
         end_dep=end_dep)
     
     ### make the response vector
-    customer_ids <- basetable$CustomerID
-    y <- basetable$Response
+    customer_ids <- basetable$RF$CustomerID
+    y <- basetable$RF$Response
     
     #### make response matrix
-    test <- basetable[,c("CustomerID","Response")]
-    
+    test <- basetable$KNN[,c("CustomerID","Response")]
     test_melt <- melt(test, id.vars = c("CustomerID","Response"))
     test_melt$Response <- as.numeric(as.character( test_melt$Response )) # changed to numeric to avoid sum not meaningful for factors error
     test_cast <- acast(test_melt, CustomerID ~ Response, sum)
@@ -27,8 +26,11 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     
     
     # Remove unnecesary columns
-    basetable$CustomerID <- NULL
-    basetable$Response <- NULL
+    basetable$RF$CustomerID <- NULL
+    basetable$RF$Response <- NULL
+    # Remove unnecesary columns
+    basetable$KNN$CustomerID <- NULL
+    basetable$KNN$Response <- NULL
     
     
     #####################################
@@ -39,21 +41,21 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     
     # Generate 50/50 train and test indicies
     set.seed(7)
-    ind <- 1:nrow(basetable)
+    ind <- 1:nrow(basetable$RF)
     indTrain <- sample(ind, ceiling(length(ind)/2))
     indTest <- ind[-indTrain]
     # Fit random forest on the train data
     library(randomForest)
     cat('Fitting first model to 50% training subset..\n')
     
-    rf_model <- randomForest(x = basetable[indTrain,],
+    rf_model <- randomForest(x = basetable$RF[indTrain,],
                              y = factor(y[indTrain]),
                              ntree = 1000)
     
     # Predict labels on the test data
     cat('Evaluating first model on 50% test subset..\n')
-    rf_pred <- predict(rf_model, newdata = basetable[indTest,], type = c("response"))
-    rf_pred2 <- predict(rf_model, newdata = basetable[indTest,], type = c("prob"))
+    rf_pred <- predict(rf_model, newdata = basetable$RF[indTest,], type = c("response"))
+    rf_pred2 <- predict(rf_model, newdata = basetable$RF[indTest,], type = c("prob"))
 
     ### accuracy
     (accuracy <- sum(diag(table(rf_pred,y[indTest])))/
@@ -76,22 +78,23 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     
     # Generate 33/33/33 train and val and test indicies
     set.seed(7)
+    ind <- 1:nrow(basetable$KNN)
     indTrain <- sample(ind, ceiling(length(ind)/3))
     indVal <- sample(ind[-indTrain], ceiling(length(ind)/3))
     indTest <- ind[-c(indTrain, indVal)]
     
-    basetable_KNN <- data.frame(sapply(basetable, function(x) as.numeric(as.character(x))))
+    basetable$KNN <- data.frame(sapply(basetable$KNN, function(x) as.numeric(as.character(x))))
 
-    stdev <- sapply(basetable_KNN[indTrain,1:4],sd)
-    means <- sapply(basetable_KNN[indTrain,1:4],mean)
-    basetable_KNN[c(indTrain,indVal),1:4] <- 
-        data.frame(t((t(basetable_KNN[c(indTrain,indVal),1:4])-means)/stdev))
-    basetable_KNN[indTrain,1:4] <- 
-        data.frame(t((t(basetable_KNN[indTrain,1:4])-means)/stdev))
-    basetable_KNN[indVal,1:4] <- 
-        data.frame(t((t(basetable_KNN[indVal,1:4])-means)/stdev))
-    basetable_KNN[indTest,1:4] <- 
-        data.frame(t((t(basetable_KNN[indTest,1:4])-means)/stdev))
+    stdev <- sapply(basetable$KNN[indTrain,1:4],sd)
+    means <- sapply(basetable$KNN[indTrain,1:4],mean)
+    basetable$KNN[c(indTrain,indVal),1:4] <- 
+        data.frame(t((t(basetable$KNN[c(indTrain,indVal),1:4])-means)/stdev))
+    basetable$KNN[indTrain,1:4] <- 
+        data.frame(t((t(basetable$KNN[indTrain,1:4])-means)/stdev))
+    basetable$KNN[indVal,1:4] <- 
+        data.frame(t((t(basetable$KNN[indVal,1:4])-means)/stdev))
+    basetable$KNN[indTest,1:4] <- 
+        data.frame(t((t(basetable$KNN[indTest,1:4])-means)/stdev))
     
     
 
@@ -110,14 +113,14 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     for(k in neighbors){
         
         #retrieve the indicators of the k nearest neighbors of the query data
-        indicatorsKNN <- as.integer(knnx.index(data=basetable[indTrain,],
-                                               query=basetable[indVal,],
+        indicatorsKNN <- as.integer(knnx.index(data=basetable$KNN[indTrain,],
+                                               query=basetable$KNN[indVal,],
                                                k=k))
         #retrieve the actual y from the training set
         #predKNN <- y[indTrain,][indicatorsKNN,]
         predKNN <- data.frame(matrix(data=indicatorsKNN,
                                      ncol=k,
-                                     nrow=nrow(basetable[indVal,])))
+                                     nrow=nrow(basetable$KNN[indVal,])))
         predictions <- lapply(1:nrow(predKNN), function(x) colMeans(Y[indTrain,][as.numeric(predKNN[x,]),]))
         predictions <- do.call(rbind, predictions)
         
@@ -146,14 +149,14 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     
     cat('Evaluating final performance of second model on 33% test data subset..\n')
     #retrieve the indicators of the k nearest neighbors of the query data
-    indicatorsKNN <- as.integer(knnx.index(data=basetable[c(indTrain,indVal),],
-                                           query=basetable[indTest,],
+    indicatorsKNN <- as.integer(knnx.index(data=basetable$KNN[c(indTrain,indVal),],
+                                           query=basetable$KNN[indTest,],
                                            k=k))
     #retrieve the actual y from the training set
     #predKNN <- y[c(indTrain, indVal),][indicatorsKNN,]
     predKNN <- data.frame(matrix(data=indicatorsKNN,
                                  ncol=k,
-                                 nrow=nrow(basetable[indTest,])))
+                                 nrow=nrow(basetable$KNN[indTest,])))
     predictions <- lapply(1:nrow(predKNN), function(x) colMeans(Y[c(indTrain, indVal),][as.numeric(predKNN[x,]),]))
     predictions <- do.call(rbind, predictions)
     
@@ -175,24 +178,20 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
         p1=output,
         a1=accuracy,
         m2=indicatorsKNN,
-        k=k, 
+        k=k,
         cutoff=cutoffs[j],
         p2=predictions_logical,
         a2=perc_correct_rec))
-    
     }
 
-# system.time(
-#     result <- create_models(
-#         start_ind="2007-01-08",
-#         end_ind="2008-01-03",
-#         start_dep="2008-01-04",
-#         end_dep="2008-12-29"))
+system.time(
+    result <- create_models(
+        start_ind="2007-01-08",
+        end_ind="2008-01-03",   # as.Date("2007-01-08")+360
+        start_dep="2008-01-04", # as.Date("2007-01-08")+360+1
+        end_dep="2008-12-29"))  # as.Date("2007-01-08")+360+1+360
 
 
-# as.Date("2007-01-08")+360
-# as.Date("2007-01-08")+360+1
-# as.Date("2007-01-08")+360+1+360
 # result$m1
 # result$m2
 # result$a1
@@ -201,7 +200,16 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
 # head(result$p2,10)
 
 
+function.length <- function(f) {
+    if (is.character(f))
+        f <- match.fun(f)
+    length(deparse(f))
+}
 
+
+function.length(create_models) + # [1] 123
+    function.length(create_basetable) # [1] 134
+# 257 lines of code 
 
 
 

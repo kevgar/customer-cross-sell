@@ -209,25 +209,30 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
         ### bring in response
         basetable <- merge(recent_response,basetable, by = "CustomerID", all.y = TRUE)
         basetable <- basetable[!is.na(basetable$Response),]
-        ### get total number purchased for each product
-        num_responses <- aggregate(basetable$Response, by = list("Response" = basetable$Response), length)
-        ### get the top 40 products
-        l$products <- head(num_responses$Response[order(num_responses$x,decreasing = TRUE)],40)
-        basetable <- basetable[basetable$Response %in% l$products,]
         basetable$Response <- factor(as.character(basetable$Response))
-        # basetable$Response <- factor(basetable$Response)
+        #get total number purchased for each product
+        num_responses <- aggregate(basetable$Response, by = list("Response" = basetable$Response), length)
+        ### For KNN create a seperate basetable with only customers who purchased a top 40 product
+        l$products <- head(num_responses$Response[order(num_responses$x,decreasing = TRUE)],40)
+        basetable_KNN <- basetable[basetable$Response %in% l$products,]
+        basetable_KNN$Response <- factor(as.character(basetable_KNN$Response))
     }
     
     # clean up the environment
     # rm(list=ls()[!ls() %in% c('basetable','visits_visitdetails')])
     
-    return(basetable)
-    
+    return(basetable <- list(RF=basetable,
+                             KNN=basetable_KNN))
     }
 
-# system.time(
-# basetable <- create_basetable(
-# start_ind="2007-01-08",
-# end_ind="2008-01-03",
-# start_dep="2008-01-04",
-# end_dep="2008-12-29"))
+# system.time(system.time(
+#     basetable <- create_basetable(
+#         start_ind="2007-01-08",
+#         end_ind="2008-01-03",
+#         start_dep="2008-01-04",
+#         end_dep="2008-12-29")))
+# # Reading in the data..
+# # Preparing the basetable..
+# # user  system elapsed 
+# # 14.612   3.037  29.473 
+

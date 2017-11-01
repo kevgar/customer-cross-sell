@@ -4,31 +4,34 @@ deploy_models <- function(object,dumpdate){
     
     # Code to create the basetable
     source('create_basetable.R')
-    basetable <- create_basetable(
+    system.time(basetable <- create_basetable(
         start_ind=dumpdate,
         end_ind=as.Date(dumpdate)+object$length_ind,
-        train=FALSE)
+        train=FALSE))
     
     # clean up the environment
     # rm(list=ls()[!ls() %in% c('basetable','visits_visitdetails')])
     
     ### make the response vector
-    customer_ids <- basetable$CustomerID
-    # y <- basetable$Response
+    # customer_ids <- basetable$RF$CustomerID
+    # y <- basetable$RF$Response
     
-    # #### make response matrix
-    # test <- basetable[,c("CustomerID","Response")]
-    # test_melt <- melt(test, id.vars = c("CustomerID","Response"))
-    # test_melt$Response <- as.numeric(as.character( test_melt$Response )) # changed to numeric to avoid sum not meaningful for factors error
-    # test_cast <- acast(test_melt, CustomerID ~ Response, sum)
-    # response_cast <- as.data.frame(test_cast)
-    # response_cast <- as.data.frame(sapply(response_cast, function(x){replace(x, x > 0,1)}))
-    # response_cast$CustomerID <- rownames(test_cast)
-    # Y <- response_cast[,-41]
+    #### make response matrix
+    test <- basetable$KNN[,c("CustomerID","Response")]
+    test_melt <- melt(test, id.vars = c("CustomerID","Response"))
+    test_melt$Response <- as.numeric(as.character( test_melt$Response )) # changed to numeric to avoid sum not meaningful for factors error
+    test_cast <- acast(test_melt, CustomerID ~ Response, sum)
+    response_cast <- as.data.frame(test_cast)
+    response_cast <- as.data.frame(sapply(response_cast, function(x){replace(x, x > 0,1)}))
+    response_cast$CustomerID <- rownames(test_cast)
+    Y <- response_cast[,-41]
     
-    # Remove unnecesary columns
-    basetable$CustomerID <- NULL
-    # basetable$Response <- NULL
+    # # Remove unnecesary columns
+    # basetable$RF$CustomerID <- NULL
+    # basetable$RF$Response <- NULL
+    # # Remove unnecesary columns
+    basetable$KNN$CustomerID <- NULL
+    basetable$KNN$Response <- NULL
     
     
     #####################################
@@ -39,9 +42,8 @@ deploy_models <- function(object,dumpdate){
     
     # Predict labels on all of the data
     cat('Evaluating first model on full dataset..\n')
-    rf_pred <- predict(#rf_model
-        object$m1, newdata = basetable, type = c("response"))
-    rf_pred2 <- predict(rf_model, newdata = basetable, type = c("prob"))
+    rf_pred <- predict(object$m1, newdata = basetable, type = c("response"))
+    rf_pred2 <- predict(object$m1, newdata = basetable, type = c("prob"))
     
     #x <- sapply(1:nrow(rf_pred2), function(x) max(rf_pred2[x,]))
     x <- sapply(1:nrow(rf_pred2), function(x)
@@ -60,88 +62,29 @@ deploy_models <- function(object,dumpdate){
     # Predict labels on all of the data
     cat('Evaluating second model on full dataset..\n')
     
-    basetable_KNN <- data.frame(sapply(basetable, function(x) as.numeric(as.character(x))))
+    basetable$KNN <- data.frame(sapply(basetable$KNN, function(x) as.numeric(as.character(x))))
     
-    stdev <- sapply(basetable_KNN[#indTrain
+    stdev <- sapply(basetable$KNN[#indTrain
         ,1:4],sd)
-    means <- sapply(basetable_KNN[#indTrain
+    means <- sapply(basetable$KNN[#indTrain
         ,1:4],mean)
-    # basetable_KNN[#c(indTrain,indVal)
-    #     ,1:4] <- data.frame(t((t(basetable_KNN[#c(indTrain,indVal)
-    #         ,1:4])-means)/stdev))
-    basetable_KNN[#indTrain
-        ,1:4] <- data.frame(t((t(basetable_KNN[#indTrain
+    basetable$KNN[#indTrain
+        ,1:4] <- data.frame(t((t(basetable$KNN[#indTrain
             ,1:4])-means)/stdev))
-    # basetable_KNN[#indVal
-    #     ,1:4] <- data.frame(t((t(basetable_KNN[#indVal
-    #         ,1:4])-means)/stdev))
-    # basetable_KNN[#indTest
-    #     ,1:4] <- data.frame(t((t(basetable_KNN[#indTest
-    #         ,1:4])-means)/stdev))
-    
-    
-    
-    ###kNN Validation for best model and model building based on optimal parameters:
-    # cat('Tuning second model on 33% validation subset..\n')
-    # cutoffs <- c(seq(.1,.8,.05))
-    # neighbors <- 20:40
-    # index <- 0 
-    # true_pos <- true_neg <- true_pos_rate <- sq_error <- matrix(nrow = length(neighbors), ncol = length(cutoffs))
-    # rownames(sq_error) <- paste0(neighbors,"_NN")
-    # colnames(sq_error) <- cutoffs
-    # 
-    # library(e1071)
-    # library(FNN)
-    # 
-    # for(k in neighbors){
-    #     
-    #     #retrieve the indicators of the k nearest neighbors of the query data
-    #     indicatorsKNN <- as.integer(knnx.index(data=basetable[indTrain,],
-    #                                            query=basetable[indVal,],
-    #                                            k=k))
-    #     #retrieve the actual y from the training set
-    #     #predKNN <- y[indTrain,][indicatorsKNN,]
-    #     predKNN <- data.frame(matrix(data=indicatorsKNN,
-    #                                  ncol=k,
-    #                                  nrow=nrow(basetable[indVal,])))
-    #     predictions <- lapply(1:nrow(predKNN), function(x) colMeans(Y[indTrain,][as.numeric(predKNN[x,]),]))
-    #     predictions <- do.call(rbind, predictions)
-    #     
-    #     
-    #     for(j in 1:length(cutoffs)){
-    #         predictions_logical <- lapply(1:nrow(predictions), function(x)
-    #             ifelse(predictions[x,] > cutoffs[j], 1, 0))
-    #         predictions_logical <- do.call(rbind, predictions_logical)
-    #         num_pos <- sum(Y[indVal,] == 1)
-    #         num_neg <- sum(Y[indVal,] == 0)
-    #         false_neg <- sum(Y[indVal,] == 1 & predictions_logical == 0)
-    #         true_pos[index,j] <- sum(Y[indVal,] == 1 & predictions_logical == 1)
-    #         true_neg[index,j] <- sum(Y[indVal,] == 0 & predictions_logical == 0)
-    #         true_pos_rate[index,j] <- 100 * num_pos / (num_pos + false_neg)
-    #         #sq_error[k,j] <- .5 * ((true_pos / num_pos) + (true_neg / num_neg))
-    #         sq_error[index,j] <- sum(abs(Y[indVal,] - predictions_logical)) - 5*(sum(Y[indVal,] == 1 & predictions_logical == 1))
-    #         #sum(y[indVal,][1:nrow(y[indVal,]),] == predictions[1:nrow(y[indVal,]),]) / (nrow(y[indVal,])*ncol(y[indVal,]))
-    #     }
-    #     index <- index + 1
-    # }
-    # 
-    # best_par <- which(sq_error == min(sq_error, na.rm = TRUE), arr.ind = TRUE)
-    # k <- neighbors[best_par[1]] # [1] 34
-    # j <- best_par[2] # [1] 2
     
     
     cat('Applying second model on full dataset..\n')
     #retrieve the indicators of the k nearest neighbors of the query data
-    indicatorsKNN <- as.integer(knnx.index(data=basetable#[c(indTrain,indVal),]
+    indicatorsKNN <- as.integer(knnx.index(data=basetable$KNN#[c(indTrain,indVal),]
                                            ,
-                                           query=basetable#[indTest,]
+                                           query=basetable$KNN#[indTest,]
                                            ,
                                            k=object$k))
     #retrieve the actual y from the training set
     #predKNN <- y[c(indTrain, indVal),][indicatorsKNN,]
     predKNN <- data.frame(matrix(data=indicatorsKNN,
                                  ncol=object$k,
-                                 nrow=nrow(basetable#[indTest,]
+                                 nrow=nrow(basetable$KNN#[indTest,]
                                            )))
     predictions <- lapply(1:nrow(predKNN), function(x) colMeans(Y#[c(indTrain, indVal),]
                                                                 [as.numeric(predKNN[x,]),]))
@@ -195,10 +138,19 @@ deploy_models <- function(object,dumpdate){
 # result$p2
 
 
+# system.time(
+#     result2 <- deploy_models(
+#         object=result,
+#         dumpdate="2007-01-08"))
+
+function.length <- function(f) {
+    if (is.character(f))
+        f <- match.fun(f)
+    length(deparse(f))
+}
 
 
-system.time(
-    result2 <- deploy_models(
-        object=result,
-        dumpdate="2007-01-08"))
+function.length(deploy_models) + # [1] 35
+    function.length(create_basetable) # [1] 134
+# 169 lines of code 
 
