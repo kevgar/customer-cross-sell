@@ -10,14 +10,24 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
         start_dep=start_dep,
         end_dep=end_dep)
     
-   # Save the response variable
+    ### make the response vector
     customer_ids <- basetable$CustomerID
     y <- basetable$Response
+    
+    #### make response matrix
+    test <- basetable[,c("CustomerID","Response")]
+    
+    test_melt <- melt(test, id.vars = c("CustomerID","Response"))
+    test_melt$Response <- as.numeric(as.character( test_melt$Response )) # changed to numeric to avoid sum not meaningful for factors error
+    test_cast <- acast(test_melt, CustomerID ~ Response, sum)
+    response_cast <- as.data.frame(test_cast)
+    response_cast <- as.data.frame(sapply(response_cast, function(x){replace(x, x > 0,1)}))
+    response_cast$CustomerID <- rownames(test_cast)
+    
     
     # Remove unnecesary columns
     basetable$CustomerID <- NULL
     basetable$Response <- NULL
-    
     
     
     #####################################
@@ -39,11 +49,6 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
                              y = factor(y[indTrain]),
                              ntree = 1000)
     
-    # rf_model <- randomForest(x = basetabletrain,
-    #                          y = ytrain,
-    #                          ntree = 1000)
-    
-    
     # Predict labels on the test data
     cat('Evaluating first model on 50% test subset..\n')
     rf_pred <- predict(rf_model, newdata = basetable[indTest,], type = c("response"))
@@ -51,22 +56,22 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
 
     ### accuracy
     (accuracy <- sum(diag(table(rf_pred,y[indTest])))/
-        length(y[indTest])) # [1] 0.3042973
+        length(y[indTest])) # [1] 0.2165867
     
     #x <- sapply(1:nrow(rf_pred2), function(x) max(rf_pred2[x,]))
     x <- sapply(1:nrow(rf_pred2), function(x)
         rf_pred2[x,colnames(rf_pred2)[which(colnames(rf_pred2) == as.character(rf_pred[x]))]])
-    output <- data.frame("CustomerID" = customer_ids[testind],
+    output <- data.frame("CustomerID" = customer_ids[indTest],
                          "Product" = rf_pred,
                          "Probability" = x)
     output <- output[order(output$Probability, decreasing = TRUE),]
-    
 
     #####################################
     
     ############# kNN Model #############
     
     #####################################
+    
     
     # Generate 33/33/33 train, val and test indicies
     set.seed(7)
@@ -86,6 +91,7 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
         data.frame(t((t(basetable_KNN[indVal,1:4])-means)/stdev))
     basetable_KNN[indTest,1:4] <- 
         data.frame(t((t(basetable_KNN[indTest,1:4])-means)/stdev))
+    
     
 
     ###kNN Validation for best model and model building based on optimal parameters:
@@ -111,7 +117,7 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
         predKNN <- data.frame(matrix(data=indicatorsKNN,
                                      ncol=k,
                                      nrow=nrow(basetable[indVal,])))
-        predictions <- lapply(1:nrow(predKNN), function(x) colMeans(y[indTrain,][as.numeric(predKNN[x,]),]))
+        predictions <- lapply(1:nrow(predKNN), function(x) colMeans(Y[indTrain,][as.numeric(predKNN[x,]),]))
         predictions <- do.call(rbind, predictions)
         
         
@@ -119,25 +125,25 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
             predictions_logical <- lapply(1:nrow(predictions), function(x)
                 ifelse(predictions[x,] > cutoffs[j], 1, 0))
             predictions_logical <- do.call(rbind, predictions_logical)
-            num_pos <- sum(y[indVal,] == 1)
-            num_neg <- sum(y[indVal,] == 0)
-            false_neg <- sum(y[indVal,] == 1 & predictions_logical == 0)
-            true_pos[index,j] <- sum(y[indVal,] == 1 & predictions_logical == 1)
-            true_neg[index,j] <- sum(y[indVal,] == 0 & predictions_logical == 0)
+            num_pos <- sum(Y[indVal,] == 1)
+            num_neg <- sum(Y[indVal,] == 0)
+            false_neg <- sum(Y[indVal,] == 1 & predictions_logical == 0)
+            true_pos[index,j] <- sum(Y[indVal,] == 1 & predictions_logical == 1)
+            true_neg[index,j] <- sum(Y[indVal,] == 0 & predictions_logical == 0)
             true_pos_rate[index,j] <- 100 * num_pos / (num_pos + false_neg)
             #sq_error[k,j] <- .5 * ((true_pos / num_pos) + (true_neg / num_neg))
-            sq_error[index,j] <- sum(abs(y[indVal,] - predictions_logical)) - 5*(sum(y[indVal,] == 1 & predictions_logical == 1))
+            sq_error[index,j] <- sum(abs(Y[indVal,] - predictions_logical)) - 5*(sum(Y[indVal,] == 1 & predictions_logical == 1))
             #sum(y[indVal,][1:nrow(y[indVal,]),] == predictions[1:nrow(y[indVal,]),]) / (nrow(y[indVal,])*ncol(y[indVal,]))
         }
         index <- index + 1
     }
     
     best_par <- which(sq_error == min(sq_error, na.rm = TRUE), arr.ind = TRUE)
-    k <- neighbors[best_par[1]]
-    j <- best_par[2]
+    k <- neighbors[best_par[1]] # [1] 34
+    j <- best_par[2] # [1] 2
     
     
-    cat('Evaluate final performance of second model on 33% test data subset..\n')
+    cat('Evaluating final performance of second model on 33% test data subset..\n')
     #retrieve the indicators of the k nearest neighbors of the query data
     indicatorsKNN <- as.integer(knnx.index(data=basetable[c(indTrain,indVal),],
                                            query=basetable[indTest,],
@@ -147,37 +153,61 @@ create_models <- function(start_ind,end_ind,start_dep,end_dep){
     predKNN <- data.frame(matrix(data=indicatorsKNN,
                                  ncol=k,
                                  nrow=nrow(basetable[indTest,])))
-    predictions <- lapply(1:nrow(predKNN), function(x) colMeans(y[c(indTrain, indVal),][as.numeric(predKNN[x,]),]))
+    predictions <- lapply(1:nrow(predKNN), function(x) colMeans(Y[c(indTrain, indVal),][as.numeric(predKNN[x,]),]))
     predictions <- do.call(rbind, predictions)
     
     predictions_logical <- lapply(1:nrow(predictions), function(x)
         ifelse(predictions[x,] > cutoffs[j], 1, 0))
     predictions_logical <- do.call(rbind, predictions_logical)
     
-    num_rec <- sum(predictions_logical == 1)
-    num_purch <- sum(y[indTest,] == 1)
-    correct_rec <- sum(predictions_logical == 1 & y[indTest,] == 1)
-    (avg_purch <- num_purch/nrow(y[indTest,]))
-    (avg_rec <- num_rec/nrow(y[indTest,]))
-    (perc_correct_rec <- correct_rec / num_rec)
+    num_rec <- sum(predictions_logical == 1) # [1] 632
+    num_purch <- sum(Y[indTest,] == 1) # [1] 972
+    correct_rec <- sum(predictions_logical == 1 & Y[indTest,] == 1) # [1] 109
+    (avg_purch <- num_purch/nrow(Y[indTest,])) # [1] 1
+    (avg_rec <- num_rec/nrow(Y[indTest,])) # [1] 0.6502058
+    (perc_correct_rec <- correct_rec / num_rec) # [1] 0.1724684
     
     ### TO DO:
   
-    # Return all the stuff in a list
+    # Return results in a list
     return(list(
         length_ind=as.integer(as.Date(end_ind)-as.Date(start_ind)),
         m1=rf_model,
         p1=output,
         a1=accuracy,
         m2=indicatorsKNN,
-        p2=customer_item_purch,
-        a2=accuracy_test))
+        p2=predictions_logical,
+        a2=perc_correct_rec))
     
     }
 
-# system.time(
-#     result <- create_models(
-#         start_ind="2007-01-08",
-#         end_ind="2008-01-08",
-#         start_dep="2008-01-09",
-#         end_dep="2008-12-31"))
+system.time(
+    result <- create_models(
+        start_ind="2007-01-08",
+        end_ind="2008-01-03",
+        start_dep="2008-01-04",
+        end_dep="2008-12-29"))
+
+
+# as.Date("2007-01-08")+360
+# as.Date("2007-01-08")+360+1
+# as.Date("2007-01-08")+360+1+360
+result$m1
+result$m2
+result$a1
+result$a2
+head(result$p1,10)
+head(result$p2,10)
+
+
+
+
+
+
+
+
+
+
+
+
+

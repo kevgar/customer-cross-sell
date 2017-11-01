@@ -1,4 +1,4 @@
-	 CustomerID Product Probability
+        CustomerID Product Probability
 224         1247374       1       0.840
 441         1250081       1       0.816
 1429        1452379       2       0.787

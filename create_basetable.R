@@ -228,6 +228,7 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
 # system.time(
 # basetable <- create_basetable(
 # start_ind="2007-01-08",
-# end_ind="2008-07-03",
-# start_dep="2008-07-04",
-# end_dep="2008-12-31"))
+# end_ind="2008-01-03",
+# start_dep="2008-01-04",
+# end_dep="2008-12-29"))
+
