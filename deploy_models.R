@@ -16,22 +16,22 @@ deploy_models <- function(object,dumpdate){
     # customer_ids <- basetable$RF$CustomerID
     # y <- basetable$RF$Response
     
-    #### make response matrix
-    test <- basetable$KNN[,c("CustomerID","Response")]
-    test_melt <- melt(test, id.vars = c("CustomerID","Response"))
-    test_melt$Response <- as.numeric(as.character( test_melt$Response )) # changed to numeric to avoid sum not meaningful for factors error
-    test_cast <- acast(test_melt, CustomerID ~ Response, sum)
-    response_cast <- as.data.frame(test_cast)
-    response_cast <- as.data.frame(sapply(response_cast, function(x){replace(x, x > 0,1)}))
-    response_cast$CustomerID <- rownames(test_cast)
-    Y <- response_cast[,-41]
+    # #### make response matrix
+    # test <- basetable$KNN[,c("CustomerID","Response")]
+    # test_melt <- melt(test, id.vars = c("CustomerID","Response"))
+    # test_melt$Response <- as.numeric(as.character( test_melt$Response ))
+    # test_cast <- acast(test_melt, CustomerID ~ Response, sum)
+    # response_cast <- as.data.frame(test_cast)
+    # response_cast <- as.data.frame(sapply(response_cast, function(x){replace(x, x > 0,1)}))
+    # response_cast$CustomerID <- rownames(test_cast)
+    # Y <- response_cast[,-41]
     
     # # Remove unnecesary columns
     # basetable$RF$CustomerID <- NULL
     # basetable$RF$Response <- NULL
     # # Remove unnecesary columns
-    basetable$KNN$CustomerID <- NULL
-    basetable$KNN$Response <- NULL
+    # basetable$KNN$CustomerID <- NULL
+    # basetable$KNN$Response <- NULL
     
     
     #####################################
@@ -104,16 +104,12 @@ deploy_models <- function(object,dumpdate){
     # (perc_correct_rec <- correct_rec / num_rec) # [1] 0.1724684
     
     
-    
     # Return all the stuff in a list
     return(list(p1=output,
-                data1=basetable,
-                p2=predictions_logical,
-                data2=basetable_KNN))
-    
-    # Verify basetables are generated
-    # return(list(data1=basetable,
-    #             data2=basetable_KNN))
+                # data1=basetable,
+                p2=result$predictions_logical#,
+                # data2=basetable_KNN
+                ))
     
 }
 

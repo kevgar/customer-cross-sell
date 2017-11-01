@@ -221,8 +221,11 @@ create_basetable <- function(start_ind, end_ind, start_dep, end_dep, train=TRUE)
     # clean up the environment
     # rm(list=ls()[!ls() %in% c('basetable','visits_visitdetails')])
     
-    return(basetable <- list(RF=basetable,
+    if(train){
+        return(basetable <- list(RF=basetable,
                              KNN=basetable_KNN))
+    } else{
+        return(basetable <- list(RF=basetable))}
     }
 
 # system.time(system.time(
